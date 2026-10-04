@@ -35,10 +35,11 @@ func _run() -> void:
 	_note("片段 %s" % _segment)
 	_note(
 		(
-			"视口 %s，窗口 %s，渲染 %s"
+			"视口 %s，窗口 %s，缩放 %.3f，渲染 %s"
 			% [
 				str(root.size),
 				str(DisplayServer.window_get_size()),
+				root.content_scale_factor,
 				RenderingServer.get_current_rendering_method(),
 			]
 		)
@@ -457,6 +458,9 @@ func _tap_hotspot(flow: Node, hotspot_id: String, screen_id: String, action: Str
 		_mark("找不到按钮 %s" % hotspot_id)
 		return
 	await _click_at(button.get_global_rect().get_center(), action)
+	# 点中之后这一屏会被换掉，按钮跟着删掉。屏幕已经切走就不用再对按钮。
+	if not is_instance_valid(button):
+		return
 	await _expect_screen(flow, screen_id, button)
 
 
@@ -581,11 +585,24 @@ func _await_volleys(board: Node, cell: Vector2i, needed: int) -> void:
 
 
 func _click_at(at: Vector2, action: String) -> void:
-	_mark("%s（%.0f, %.0f）" % [action, at.x, at.y])
-	_post_pointer(at, true)
+	var screen := _to_window(at)
+	_mark("%s（%.0f, %.0f）" % [action, screen.x, screen.y])
+	_post_pointer(screen, true)
 	await _wait(0.08)
-	_post_pointer(at, false)
+	_post_pointer(screen, false)
 	await process_frame
+
+
+## 控件坐标在设计分辨率（1920×1080）上。窗口更大时，输入系统会先除掉这个倍数，所以这里要乘回去。
+func _to_window(at: Vector2) -> Vector2:
+	var design := Vector2(
+		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	)
+	var window := Vector2(DisplayServer.window_get_size())
+	if design.x <= 0.0 or design.y <= 0.0:
+		return at
+	return Vector2(at.x * window.x / design.x, at.y * window.y / design.y)
 
 
 func _post_pointer(at: Vector2, pressed: bool) -> void:
